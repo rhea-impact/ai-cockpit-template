@@ -4,7 +4,7 @@
 Start of every session. This is the first thing you run.
 
 ## What It Does
-Full situational awareness briefing: where we were, where we are, where we're going, and what's blocking us. No questions asked — show the state and wait for orders.
+Shows the ASCII art header, status bar, and drift detection. Then composes `/pre-flight` (as a subagent) to produce the full situational briefing. Waits for orders.
 
 ## Execution Steps
 
@@ -56,46 +56,33 @@ If drift was detected (compare git state to bookmark's `workspace_state`):
   DRIFT     <branch changed / N new commits / N files modified outside session>
 ```
 
-### 3. Launch Situational Awareness Subagent
+### 3. Compose /pre-flight
 
-Use the **Task tool** with `subagent_type: "Explore"` to scan the cockpit workspace and produce the four-part briefing. This keeps the heavy scanning out of the main context.
+Launch the `/pre-flight` skill as a **subagent** (Task tool, `subagent_type: "Explore"`) to scan the workspace and produce the four-part briefing.
 
-**Subagent prompt** (adapt the paths to the current cockpit):
+Pass the subagent:
+- The current working directory
+- Bookmark context (summary, next_actions, blockers, lifecycle_state)
+- Instructions to read the `/pre-flight` skill at `.claude/skills/pre-flight/skill.md` and follow it
 
+**Output the subagent's result directly below the status bar.**
+
+The result should be the four-part briefing:
 ```
-Scan the cockpit workspace at <current working directory> and produce a situational awareness briefing. Read whatever exists — skip what doesn't.
-
-Scan these (only if they exist):
-- backlog/tasks/ — count tasks by status (to do, in progress, done, blocked)
-- projects/ — list active projects, count checklist progress
-- tasks/README.md — scan for waiting-on items and ages
-- CLAUDE.md — pull any "Active Research", "Current State", "What's Active", "What's Blocked" sections
-- state.json custom fields — domain-specific state
-
-Also incorporate this bookmark context:
-- Last session summary: <bookmark context.summary>
-- Next actions from last session: <bookmark next_actions>
-- Blockers from last session: <bookmark blockers>
-- Lifecycle state: <bookmark lifecycle_state>
-
-Output EXACTLY this format (keep each section to 1-5 lines, be concise):
-
 WHERE WE WERE
-  <what the last session accomplished, or "First session" if new>
+  ...
 
 WHERE WE ARE
-  <current project state: active workstreams, task counts, domain-specific state>
+  ...
 
 WHERE WE'RE GOING
-  1. <top priority>
-  2. <second priority>
-  3. <third priority>
+  1. ...
+  2. ...
+  3. ...
 
 BLOCKERS
-  <blocked items with who/what and age, or "None">
+  ...
 ```
-
-**Output the subagent's result directly below the ASCII art header.**
 
 ### 4. Update State
 
@@ -116,10 +103,7 @@ And wait for the user to tell you what to do.
 
 ## Rules
 - Reuse gitStatus from session context. Never re-fetch what's already there.
-- The subagent does the heavy scanning. Main context stays lean.
+- The subagent (pre-flight) does the heavy scanning. Main context stays lean.
 - Never ask questions during takeoff. Just show state.
-- If the previous session was `lifecycle_state: blocked`, make sure the subagent highlights blockers prominently.
-- Keep each briefing section to 1-5 lines. Concise, not verbose.
-- If the cockpit is bare (no backlog, no projects, no tasks), the subagent returns a minimal briefing: "Fresh cockpit. No projects or tasks tracked yet."
-- If no bookmark exists and no state.json exists, this is a fresh cockpit — say "First flight. Cockpit initialized." and create state.json.
-- If bookmark file is corrupted or unreadable, note "Bookmark corrupted — starting fresh" and continue without it.
+- If no bookmark exists and no state.json exists, this is a fresh cockpit — say "First flight. Cockpit initialized." and create state.json. Still run pre-flight.
+- If bookmark file is corrupted or unreadable, note "Bookmark corrupted — starting fresh" and continue.

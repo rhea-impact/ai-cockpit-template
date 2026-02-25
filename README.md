@@ -37,7 +37,8 @@ claude
 
 | Skill | Trigger | What It Does |
 |-------|---------|-------------|
-| `/takeoff` | Start of session | Read bookmark, detect drift, show priorities, wait for orders |
+| `/takeoff` | Start of session | ASCII header, drift detection, composes `/pre-flight` for full briefing |
+| `/pre-flight` | Called by takeoff (or standalone) | Subagent scan: where we were / are / going / blockers |
 | `/land` | End of session | Capture outcomes, blockers, next actions, write bookmark |
 | `/cockpit-status` | Anytime | Show active workstreams, blockers, ages, who owes what |
 | `/cockpit-repair` | When things break | Validate state files, find corruption, offer fixes |
@@ -56,6 +57,7 @@ your-cockpit/
 │       ├── takeoff/              # Boot sequence (from template)
 │       ├── land/                 # Park sequence (from template)
 │       ├── cockpit-status/       # Instrument panel (from template)
+│       ├── pre-flight/            # Situational scan (from template)
 │       ├── cockpit-repair/       # Diagnostics (from template)
 │       └── your-domain-skill/    # Your additions
 ├── state.json                    # Session state & watermarks
