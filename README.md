@@ -40,6 +40,7 @@ claude
 | `/takeoff` | Start of session | Read bookmark, detect drift, show priorities, wait for orders |
 | `/land` | End of session | Capture outcomes, blockers, next actions, write bookmark |
 | `/cockpit-status` | Anytime | Show active workstreams, blockers, ages, who owes what |
+| `/cockpit-repair` | When things break | Validate state files, find corruption, offer fixes |
 
 ### State Management
 
@@ -55,6 +56,7 @@ your-cockpit/
 │       ├── takeoff/              # Boot sequence (from template)
 │       ├── land/                 # Park sequence (from template)
 │       ├── cockpit-status/       # Instrument panel (from template)
+│       ├── cockpit-repair/       # Diagnostics (from template)
 │       └── your-domain-skill/    # Your additions
 ├── state.json                    # Session state & watermarks
 ├── CLAUDE.md                     # Role context + instructions
@@ -63,7 +65,7 @@ your-cockpit/
 
 ## Design Principles
 
-1. **Cheap boots** — `/takeoff` reads 3 things max: CLAUDE.md (already loaded), state.json, latest bookmark. No API calls. No slow scans.
+1. **Cheap boots** — `/takeoff` reads 2 things: state.json and latest bookmark. Git state and CLAUDE.md are already in session context. No redundant I/O.
 2. **Session contracts** — Every session has a lifecycle: boot → work → land. Bookmarks are the contract between sessions.
 3. **Drift detection** — If the branch changed, files were modified, or commits landed since your last bookmark, `/takeoff` tells you.
 4. **Domain-agnostic** — The template knows nothing about your project. It only knows about sessions, bookmarks, and state.
