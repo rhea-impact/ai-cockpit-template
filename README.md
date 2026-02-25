@@ -71,13 +71,14 @@ your-cockpit/
 4. **Domain-agnostic** — The template knows nothing about your project. It only knows about sessions, bookmarks, and state.
 5. **Composable** — Add as many domain skills as you want. The primitives stay the same.
 
-## Customization
+## Documentation
 
-See [docs/customization.md](docs/customization.md) for how to:
-- Add domain-specific skills
-- Extend `state.json` with custom watermarks
-- Configure the cockpit status dashboard
-- Set up project-specific takeoff checklists
+| Guide | What It Covers |
+|-------|---------------|
+| [docs/customization.md](docs/customization.md) | Adding skills, extending state.json, configuring the dashboard |
+| [docs/fleet.md](docs/fleet.md) | Managing multiple cockpits from a mothership (roles/, fleet registry) |
+| [docs/integrations.md](docs/integrations.md) | Connecting MCP servers (Outlook, GitHub, Wrike, etc.) |
+| [CHANGELOG.md](CHANGELOG.md) | Version history |
 
 ## In the Wild
 
