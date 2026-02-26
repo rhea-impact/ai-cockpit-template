@@ -73,6 +73,22 @@ your-cockpit/
 4. **Domain-agnostic** — The template knows nothing about your project. It only knows about sessions, bookmarks, and state.
 5. **Composable** — Add as many domain skills as you want. The primitives stay the same.
 
+## Keeping Cockpits in Sync
+
+When you update a skill in this template, push it to all downstream cockpits:
+
+```bash
+./bin/sync-skills              # sync all skills to all cockpits
+./bin/sync-skills land         # sync just one skill
+./bin/sync-skills --dry-run    # preview without changes
+```
+
+The script reads `bin/cockpit-registry.txt` for the list of downstream cockpits. Add new cockpits there when you create them.
+
+**What it does:** copies skill files, commits with a sync message, and pushes. Skips archived repos and cockpits not found locally.
+
+**When to run:** after any edit to `.claude/skills/` in this template repo.
+
 ## Documentation
 
 | Guide | What It Covers |
@@ -85,8 +101,10 @@ your-cockpit/
 ## In the Wild
 
 Cockpits built from this template:
+- **Eidos Cockpit** — Multi-pilot planning & mission control for Eidos AGI
 - **AIC Director of AI** — Email-centric command post across 4 sub-roles
 - **Greenmark Planning** — Waste management leadership planning hub
+- **Reeves Cockpit** — Personal assistant command post
 - *(Add yours here)*
 
 ## License
