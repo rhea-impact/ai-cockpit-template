@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# generate-manifest — Build skills_manifest.json from current template skills
+#
+# Run this BEFORE tagging a new release:
+#   ./bin/generate-manifest v1.2.0
+#   git add skills_manifest.json
+#   git commit -m "release: v1.2.0"
+#   git tag v1.2.0
+#   git push --tags
+
+set -euo pipefail
+
+VERSION="${1:-}"
+if [ -z "$VERSION" ]; then
+  echo "Usage: ./bin/generate-manifest <version>"
+  echo "Example: ./bin/generate-manifest v1.2.0"
+  exit 1
+fi
+
+TEMPLATE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+SKILLS_DIR="$TEMPLATE_DIR/.claude/skills"
+
+if [ ! -d "$SKILLS_DIR" ]; then
+  echo "ERROR: No skills directory at $SKILLS_DIR"
+  exit 1
+fi
+
+# Build JSON manifest
+echo "{" > "$TEMPLATE_DIR/skills_manifest.json"
+echo "  \"version\": \"$VERSION\"," >> "$TEMPLATE_DIR/skills_manifest.json"
+echo "  \"generated\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"," >> "$TEMPLATE_DIR/skills_manifest.json"
+echo "  \"skills\": {" >> "$TEMPLATE_DIR/skills_manifest.json"
+
+FIRST=true
+for skill_dir in "$SKILLS_DIR"/*/; do
+  [ ! -d "$skill_dir" ] && continue
+  skill_name="$(basename "$skill_dir")"
+
+  for file in "$skill_dir"*; do
+    [ ! -f "$file" ] && continue
+    filename="$(basename "$file")"
+    rel_path=".claude/skills/$skill_name/$filename"
+    hash="$(shasum -a 256 "$file" | cut -d' ' -f1)"
+
+    if $FIRST; then
+      FIRST=false
+    else
+      echo "," >> "$TEMPLATE_DIR/skills_manifest.json"
+    fi
+
+    printf '    "%s": {\n      "path": "%s",\n      "sha256": "%s"\n    }' \
+      "$skill_name/$filename" "$rel_path" "$hash" >> "$TEMPLATE_DIR/skills_manifest.json"
+  done
+done
+
+echo "" >> "$TEMPLATE_DIR/skills_manifest.json"
+echo "  }" >> "$TEMPLATE_DIR/skills_manifest.json"
+echo "}" >> "$TEMPLATE_DIR/skills_manifest.json"
+
+echo "Generated skills_manifest.json for $VERSION"
+echo "Skills found:"
+jq -r '.skills | keys[]' "$TEMPLATE_DIR/skills_manifest.json" 2>/dev/null || cat "$TEMPLATE_DIR/skills_manifest.json"

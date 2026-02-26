@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+# update-from-template — Pull latest template skills into this cockpit
+#
+# Usage:
+#   ./bin/update-from-template              # check for updates and apply
+#   ./bin/update-from-template --dry-run    # show what would change
+#   ./bin/update-from-template --check      # just check, don't apply
+#
+# Reads template source from state.json ("cockpit.template").
+# Compares local skills against the upstream manifest.
+# Only updates template skills — never touches domain-specific skills.
+# Detects local customizations via SHA256 and won't clobber them.
+#
+# Requires: gh (GitHub CLI), jq
+
+set -euo pipefail
+
+COCKPIT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+STATE_FILE="$COCKPIT_DIR/state.json"
+SKILLS_DIR="$COCKPIT_DIR/.claude/skills"
+LOCAL_MANIFEST="$COCKPIT_DIR/skills_manifest.json"
+
+DRY_RUN=false
+CHECK_ONLY=false
+
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY_RUN=true ;;
+    --check) CHECK_ONLY=true ;;
+  esac
+done
+
+# ─── Preflight ────────────────────────────────────────────────────────────────
+
+if ! command -v gh &> /dev/null; then
+  echo "ERROR: gh (GitHub CLI) is required. Install: https://cli.github.com"
+  exit 1
+fi
+
+if ! command -v jq &> /dev/null; then
+  echo "ERROR: jq is required. Install: brew install jq"
+  exit 1
+fi
+
+if [ ! -f "$STATE_FILE" ]; then
+  echo "ERROR: No state.json found. Is this a cockpit?"
+  exit 1
+fi
+
+# ─── Read local state ────────────────────────────────────────────────────────
+
+TEMPLATE_REPO=$(jq -r '.cockpit.template // empty' "$STATE_FILE")
+LOCAL_VERSION=$(jq -r '.cockpit.template_version // .cockpit.version // "unknown"' "$STATE_FILE")
+COCKPIT_NAME=$(jq -r '.cockpit.name // "cockpit"' "$STATE_FILE")
+
+if [ -z "$TEMPLATE_REPO" ]; then
+  echo "ERROR: No template repo found in state.json (cockpit.template)"
+  echo "Add it: jq '.cockpit.template = \"org/repo\"' state.json > tmp && mv tmp state.json"
+  exit 1
+fi
+
+echo "╔══════════════════════════════════════════╗"
+echo "║  UPDATE FROM TEMPLATE                    ║"
+echo "╚══════════════════════════════════════════╝"
+echo ""
+echo "Cockpit:   $COCKPIT_NAME"
+echo "Template:  $TEMPLATE_REPO"
+echo "Local:     $LOCAL_VERSION"
+
+# ─── Fetch latest release from template ───────────────────────────────────────
+
+LATEST_TAG=$(gh release view --repo "$TEMPLATE_REPO" --json tagName -q '.tagName' 2>/dev/null || echo "")
+
+if [ -z "$LATEST_TAG" ]; then
+  # Fall back to latest tag if no releases
+  LATEST_TAG=$(gh api "repos/$TEMPLATE_REPO/tags" --jq '.[0].name' 2>/dev/null || echo "")
+fi
+
+if [ -z "$LATEST_TAG" ]; then
+  echo "ERROR: Could not find any releases or tags on $TEMPLATE_REPO"
+  exit 1
+fi
+
+echo "Latest:    $LATEST_TAG"
+echo ""
+
+if [ "$LOCAL_VERSION" = "$LATEST_TAG" ]; then
+  echo "Already up to date."
+  exit 0
+fi
+
+echo "Update available: $LOCAL_VERSION → $LATEST_TAG"
+echo ""
+
+if $CHECK_ONLY; then
+  exit 0
+fi
+
+# ─── Fetch remote manifest ───────────────────────────────────────────────────
+
+REMOTE_MANIFEST=$(gh api "repos/$TEMPLATE_REPO/contents/skills_manifest.json?ref=$LATEST_TAG" \
+  --jq '.content' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+
+if [ -z "$REMOTE_MANIFEST" ]; then
+  echo "ERROR: No skills_manifest.json found in $TEMPLATE_REPO@$LATEST_TAG"
+  echo "The template may not have been set up for update-from-template yet."
+  exit 1
+fi
+
+# ─── Compare and sync skills ─────────────────────────────────────────────────
+
+UPDATED=0
+SKIPPED=0
+CONFLICTS=0
+ADDED=0
+
+# Parse remote manifest skills
+REMOTE_SKILLS=$(echo "$REMOTE_MANIFEST" | jq -r '.skills | keys[]')
+
+for skill_key in $REMOTE_SKILLS; do
+  rel_path=$(echo "$REMOTE_MANIFEST" | jq -r ".skills[\"$skill_key\"].path")
+  remote_hash=$(echo "$REMOTE_MANIFEST" | jq -r ".skills[\"$skill_key\"].sha256")
+  local_file="$COCKPIT_DIR/$rel_path"
+
+  # Get expected hash from LOCAL manifest (what the file should be if unmodified)
+  local_expected_hash=""
+  if [ -f "$LOCAL_MANIFEST" ]; then
+    local_expected_hash=$(jq -r ".skills[\"$skill_key\"].sha256 // empty" "$LOCAL_MANIFEST" 2>/dev/null || echo "")
+  fi
+
+  if [ ! -f "$local_file" ]; then
+    # New skill — doesn't exist locally yet
+    if $DRY_RUN; then
+      echo "ADD   $skill_key (new)"
+    else
+      mkdir -p "$(dirname "$local_file")"
+      gh api "repos/$TEMPLATE_REPO/contents/$rel_path?ref=$LATEST_TAG" \
+        --jq '.content' 2>/dev/null | base64 -d > "$local_file"
+      echo "ADD   $skill_key"
+    fi
+    ((ADDED++))
+    continue
+  fi
+
+  # File exists locally — check if remote has changed
+  if [ "$remote_hash" = "$local_expected_hash" ]; then
+    # Remote hasn't changed for this skill — skip
+    continue
+  fi
+
+  # Remote changed — check if local was customized
+  local_actual_hash=$(shasum -a 256 "$local_file" | cut -d' ' -f1)
+
+  if [ -n "$local_expected_hash" ] && [ "$local_actual_hash" != "$local_expected_hash" ]; then
+    # Local file was customized — don't clobber
+    echo "CONFLICT  $skill_key (local customization detected — skipping)"
+    ((CONFLICTS++))
+    continue
+  fi
+
+  # Safe to update
+  if $DRY_RUN; then
+    echo "UPDATE  $skill_key"
+  else
+    gh api "repos/$TEMPLATE_REPO/contents/$rel_path?ref=$LATEST_TAG" \
+      --jq '.content' 2>/dev/null | base64 -d > "$local_file"
+    echo "UPDATE  $skill_key"
+  fi
+  ((UPDATED++))
+done
+
+# ─── Update local manifest and state ─────────────────────────────────────────
+
+if ! $DRY_RUN; then
+  # Save remote manifest locally
+  echo "$REMOTE_MANIFEST" > "$LOCAL_MANIFEST"
+
+  # Update template_version in state.json
+  jq ".cockpit.template_version = \"$LATEST_TAG\"" "$STATE_FILE" > "$STATE_FILE.tmp" \
+    && mv "$STATE_FILE.tmp" "$STATE_FILE"
+fi
+
+# ─── Summary ──────────────────────────────────────────────────────────────────
+
+echo ""
+if $DRY_RUN; then
+  echo "Dry run complete. No changes made."
+else
+  echo "Sync complete."
+fi
+echo "Updated: $UPDATED  Added: $ADDED  Conflicts: $CONFLICTS"
+
+if [ "$CONFLICTS" -gt 0 ]; then
+  echo ""
+  echo "⚠ Some skills have local customizations and were not updated."
+  echo "  To see what changed upstream, compare manually:"
+  echo "  gh api repos/$TEMPLATE_REPO/contents/.claude/skills/<name>/skill.md?ref=$LATEST_TAG --jq '.content' | base64 -d"
+fi

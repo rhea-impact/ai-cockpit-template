@@ -75,19 +75,49 @@ your-cockpit/
 
 ## Keeping Cockpits in Sync
 
-When you update a skill in this template, push it to all downstream cockpits:
+### For cockpit owners (pull updates into your cockpit)
 
 ```bash
-./bin/sync-skills              # sync all skills to all cockpits
-./bin/sync-skills land         # sync just one skill
+cd your-cockpit
+./bin/update-from-template              # pull latest skills from upstream
+./bin/update-from-template --dry-run    # preview what would change
+./bin/update-from-template --check      # just check if updates are available
+```
+
+This is the **recommended** approach. Each cockpit pulls from its upstream template. No central registry needed — the cockpit knows its template from `state.json`.
+
+- Only updates template skills — never touches your domain-specific skills
+- Detects local customizations via SHA256 hashing — won't clobber your changes
+- Updates `skills_manifest.json` and `state.json` with the new version
+
+Requires: `gh` (GitHub CLI) and `jq`.
+
+### For template maintainers (push updates to known cockpits)
+
+```bash
+cd ai-cockpit-template
+./bin/sync-skills              # push all skills to all registered cockpits
+./bin/sync-skills land         # push just one skill
 ./bin/sync-skills --dry-run    # preview without changes
 ```
 
-The script reads `bin/cockpit-registry.txt` for the list of downstream cockpits. Add new cockpits there when you create them.
+Reads `bin/cockpit-registry.txt` for local cockpit paths. Useful when you maintain multiple cockpits on one machine.
 
-**What it does:** copies skill files, commits with a sync message, and pushes. Skips archived repos and cockpits not found locally.
+### Release workflow (for template maintainers)
 
-**When to run:** after any edit to `.claude/skills/` in this template repo.
+```bash
+# 1. Make your skill changes
+# 2. Generate the manifest
+./bin/generate-manifest v1.3.0
+
+# 3. Commit and tag
+git add skills_manifest.json
+git commit -m "release: v1.3.0"
+git tag v1.3.0
+git push --tags
+
+# 4. Downstream cockpits can now: ./bin/update-from-template
+```
 
 ## Documentation
 
