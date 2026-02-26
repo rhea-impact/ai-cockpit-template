@@ -1,0 +1,12 @@
+# Cockpit Registry — downstream cockpits that receive template skill updates
+# One local path per line. Lines starting with # are ignored.
+# Run `bin/sync-skills` to push updates to all listed cockpits.
+
+~/repos-eidos-agi/eidos-cockpit
+~/repos-aic/aic-investment-analyst-cockpit
+~/repos-aic/aic-software-engineer-cockpit
+~/repos-aic/ciso
+~/repos-greenmark-waste-solutions/greenmark-planning
+~/repos-greenmark-waste-solutions/greenmark-director-of-ai-and-technology
+~/repos-personal/reeves-cockpit
+~/repos-personal/aic-director-of-ai-cockpit

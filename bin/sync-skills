@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# sync-skills — Push template skill updates to all downstream cockpits
+#
+# Usage:
+#   ./bin/sync-skills              # sync all skills to all cockpits
+#   ./bin/sync-skills land         # sync only the land skill
+#   ./bin/sync-skills --dry-run    # show what would happen without doing it
+#
+# Registry: bin/cockpit-registry.txt (one local path per line)
+# Skips archived repos and cockpits that don't exist locally.
+
+set -euo pipefail
+
+TEMPLATE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+SKILLS_DIR="$TEMPLATE_DIR/.claude/skills"
+REGISTRY="$TEMPLATE_DIR/bin/cockpit-registry.txt"
+
+DRY_RUN=false
+SKILL_FILTER=""
+
+# Parse args
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY_RUN=true ;;
+    *) SKILL_FILTER="$arg" ;;
+  esac
+done
+
+if [ ! -f "$REGISTRY" ]; then
+  echo "ERROR: No registry found at $REGISTRY"
+  echo "Create it with one cockpit path per line."
+  exit 1
+fi
+
+# Collect skills to sync
+if [ -n "$SKILL_FILTER" ]; then
+  SKILLS=("$SKILLS_DIR/$SKILL_FILTER")
+  if [ ! -d "${SKILLS[0]}" ]; then
+    echo "ERROR: Skill '$SKILL_FILTER' not found in $SKILLS_DIR"
+    exit 1
+  fi
+else
+  SKILLS=("$SKILLS_DIR"/*)
+fi
+
+echo "╔══════════════════════════════════════════╗"
+echo "║  COCKPIT TEMPLATE — SKILL SYNC          ║"
+echo "╚══════════════════════════════════════════╝"
+echo ""
+echo "Template: $TEMPLATE_DIR"
+echo "Skills:   ${SKILL_FILTER:-all}"
+echo "Dry run:  $DRY_RUN"
+echo ""
+
+UPDATED=0
+SKIPPED=0
+FAILED=0
+
+while IFS= read -r cockpit_path || [ -n "$cockpit_path" ]; do
+  # Skip comments and blank lines
+  [[ "$cockpit_path" =~ ^#.*$ || -z "$cockpit_path" ]] && continue
+
+  # Expand ~
+  cockpit_path="${cockpit_path/#\~/$HOME}"
+
+  # Skip if doesn't exist locally
+  if [ ! -d "$cockpit_path" ]; then
+    echo "SKIP  $cockpit_path (not found locally)"
+    ((SKIPPED++))
+    continue
+  fi
+
+  cockpit_name="$(basename "$cockpit_path")"
+  cockpit_skills="$cockpit_path/.claude/skills"
+
+  # Skip if no skills directory
+  if [ ! -d "$cockpit_skills" ]; then
+    echo "SKIP  $cockpit_name (no .claude/skills/)"
+    ((SKIPPED++))
+    continue
+  fi
+
+  for skill_dir in "${SKILLS[@]}"; do
+    skill_name="$(basename "$skill_dir")"
+    target="$cockpit_skills/$skill_name"
+
+    # Only sync skills that already exist in the cockpit
+    if [ ! -d "$target" ]; then
+      continue
+    fi
+
+    # Check if files differ
+    if diff -rq "$skill_dir" "$target" > /dev/null 2>&1; then
+      continue  # Already in sync
+    fi
+
+    if $DRY_RUN; then
+      echo "WOULD $cockpit_name/$skill_name"
+    else
+      cp -r "$skill_dir"/* "$target/"
+
+      # Commit and push
+      cd "$cockpit_path"
+      git add ".claude/skills/$skill_name/" 2>/dev/null
+
+      if git diff --cached --quiet 2>/dev/null; then
+        continue  # No actual changes after staging
+      fi
+
+      if git commit -m "fix: sync /$skill_name skill from cockpit template
+
+Co-Authored-By: sync-skills <noreply@rhea-impact.com>" > /dev/null 2>&1; then
+        if git push > /dev/null 2>&1; then
+          echo "OK    $cockpit_name/$skill_name (committed + pushed)"
+          ((UPDATED++))
+        else
+          echo "WARN  $cockpit_name/$skill_name (committed, push failed — archived?)"
+          ((FAILED++))
+        fi
+      else
+        echo "WARN  $cockpit_name/$skill_name (commit failed)"
+        ((FAILED++))
+      fi
+    fi
+  done
+done < "$REGISTRY"
+
+echo ""
+echo "Done. Updated: $UPDATED  Skipped: $SKIPPED  Failed: $FAILED"
