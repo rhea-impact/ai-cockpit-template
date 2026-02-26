@@ -1,6 +1,6 @@
 {
-  "version": "v1.2.0",
-  "generated": "2026-02-26T08:53:54Z",
+  "version": "v1.2.1",
+  "generated": "2026-02-26T08:59:10Z",
   "skills": {
     "cockpit-repair/skill.md": {
       "path": ".claude/skills/cockpit-repair/skill.md",

@@ -114,6 +114,9 @@ SKIPPED=0
 CONFLICTS=0
 ADDED=0
 
+# Helper to safely increment (bash arithmetic returning 0 exits under set -e)
+inc() { eval "$1=\$(( $1 + 1 ))"; }
+
 # Parse remote manifest skills
 REMOTE_SKILLS=$(echo "$REMOTE_MANIFEST" | jq -r '.skills | keys[]')
 
@@ -138,7 +141,7 @@ for skill_key in $REMOTE_SKILLS; do
         --jq '.content' 2>/dev/null | base64 -d > "$local_file"
       echo "ADD   $skill_key"
     fi
-    ((ADDED++))
+    inc ADDED
     continue
   fi
 
@@ -154,7 +157,7 @@ for skill_key in $REMOTE_SKILLS; do
   if [ -n "$local_expected_hash" ] && [ "$local_actual_hash" != "$local_expected_hash" ]; then
     # Local file was customized — don't clobber
     echo "CONFLICT  $skill_key (local customization detected — skipping)"
-    ((CONFLICTS++))
+    inc CONFLICTS
     continue
   fi
 
@@ -166,7 +169,7 @@ for skill_key in $REMOTE_SKILLS; do
       --jq '.content' 2>/dev/null | base64 -d > "$local_file"
     echo "UPDATE  $skill_key"
   fi
-  ((UPDATED++))
+  inc UPDATED
 done
 
 # ─── Update local manifest and state ─────────────────────────────────────────
